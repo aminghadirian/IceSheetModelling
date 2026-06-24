@@ -3,105 +3,110 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Ice Sheet on Water &mdash; Flexural-Gravity Wave Model</title>
+    <title>Floating Array Screening &mdash; Equivalent-Plate Hydroelastic Model</title>
     <meta
       name="description"
-      content="Interactive model of an ice sheet floating on water, flexing under ocean waves (flexural-gravity / hydroelastic waves)."
+      content="Screening model for a large moored floating array (e.g. floating PV) treated as an equivalent orthotropic plate on water — flexural-gravity hydroelasticity."
     />
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
     <header class="app-header">
-      <h1>Ice Sheet on Water</h1>
+      <h1>Floating Array &mdash; Equivalent-Plate Screening</h1>
       <p class="subtitle">
-        Flexural-gravity (hydroelastic) wave model &mdash; a thin elastic ice
-        sheet flexing on water under ocean waves.
+        A large moored floating array (many small floaters) modelled as an
+        <strong>orthotropic thin plate on water</strong>. Flexural-gravity
+        (hydroelastic) screening for global response and connector loads.
+        <em>Screening only &mdash; not a design-load tool.</em>
       </p>
     </header>
 
     <main class="layout">
       <!-- Controls -->
       <section class="panel controls" aria-label="Model parameters">
-        <h2>Wave</h2>
+        <h2>Wave (reservoir)</h2>
         <div class="control" data-control="T">
           <label for="T">Wave period <span class="val"></span></label>
-          <input type="range" id="T" min="2" max="25" step="0.1" value="9" />
-          <span class="unit">s</span>
+          <input type="range" id="T" min="1.5" max="8" step="0.1" value="3" />
         </div>
         <div class="control" data-control="a">
           <label for="a">Wave amplitude <span class="val"></span></label>
-          <input type="range" id="a" min="0.1" max="5" step="0.1" value="1" />
-          <span class="unit">m</span>
+          <input type="range" id="a" min="0.02" max="1" step="0.01" value="0.2" />
         </div>
         <div class="control" data-control="H">
           <label for="H">Water depth <span class="val"></span></label>
-          <input type="range" id="H" min="5" max="500" step="5" value="200" />
-          <span class="unit">m</span>
+          <input type="range" id="H" min="2" max="50" step="1" value="16" />
+        </div>
+        <div class="control" data-control="heading">
+          <label for="heading">Wave heading (to x-axis) <span class="val"></span></label>
+          <input type="range" id="heading" min="0" max="90" step="1" value="0" />
         </div>
 
-        <h2>Ice sheet</h2>
-        <div class="control" data-control="h">
-          <label for="h">Thickness <span class="val"></span></label>
-          <input type="range" id="h" min="0.1" max="8" step="0.1" value="1.5" />
-          <span class="unit">m</span>
+        <h2>Array (equivalent plate)</h2>
+        <div class="control" data-control="Dx">
+          <label for="Dx">Bending rigidity Dₓ <span class="val"></span></label>
+          <input type="range" id="Dx" min="3" max="8" step="0.05" value="5.7" />
         </div>
-        <div class="control" data-control="E">
-          <label for="E">Young's modulus <span class="val"></span></label>
-          <input type="range" id="E" min="0.5" max="10" step="0.1" value="5" />
-          <span class="unit">GPa</span>
+        <div class="control" data-control="Dy">
+          <label for="Dy">Bending rigidity D_y <span class="val"></span></label>
+          <input type="range" id="Dy" min="3" max="8" step="0.05" value="5.0" />
         </div>
-        <div class="control" data-control="nu">
-          <label for="nu">Poisson's ratio <span class="val"></span></label>
-          <input type="range" id="nu" min="0.2" max="0.45" step="0.01" value="0.3" />
+        <div class="control" data-control="eta">
+          <label for="eta">Structural loss factor η <span class="val"></span></label>
+          <input type="range" id="eta" min="0" max="0.4" step="0.01" value="0.1" />
         </div>
-        <div class="control" data-control="rhoI">
-          <label for="rhoI">Ice density <span class="val"></span></label>
-          <input type="range" id="rhoI" min="850" max="950" step="1" value="917" />
-          <span class="unit">kg/m&sup3;</span>
+        <div class="control" data-control="ms">
+          <label for="ms">Areal mass <span class="val"></span></label>
+          <input type="range" id="ms" min="20" max="200" step="5" value="80" />
         </div>
-        <div class="control" data-control="rhoW">
-          <label for="rhoW">Water density <span class="val"></span></label>
-          <input type="range" id="rhoW" min="1000" max="1030" step="1" value="1025" />
-          <span class="unit">kg/m&sup3;</span>
+        <div class="control" data-control="arrayLen">
+          <label for="arrayLen">Array length (heading dir.) <span class="val"></span></label>
+          <input type="range" id="arrayLen" min="50" max="600" step="10" value="400" />
+        </div>
+
+        <h2>Floater unit cell</h2>
+        <div class="control" data-control="Lx">
+          <label for="Lx">Floater size x <span class="val"></span></label>
+          <input type="range" id="Lx" min="0.2" max="3" step="0.1" value="1.2" />
+        </div>
+        <div class="control" data-control="Ly">
+          <label for="Ly">Floater size y <span class="val"></span></label>
+          <input type="range" id="Ly" min="0.2" max="3" step="0.1" value="0.4" />
+        </div>
+        <div class="control" data-control="floatH">
+          <label for="floatH">Floater height <span class="val"></span></label>
+          <input type="range" id="floatH" min="0.1" max="1" step="0.05" value="0.4" />
         </div>
 
         <h2>Animation</h2>
         <div class="control" data-control="speed">
           <label for="speed">Speed <span class="val"></span></label>
           <input type="range" id="speed" min="0" max="3" step="0.05" value="1" />
-          <span class="unit">&times;</span>
         </div>
         <div class="buttons">
           <button id="playPause" type="button">Pause</button>
           <button id="reset" type="button">Reset view</button>
-        </div>
-
-        <h2>Presets</h2>
-        <div class="buttons">
-          <button class="preset" data-preset="swell" type="button">Ocean swell</button>
-          <button class="preset" data-preset="storm" type="button">Storm</button>
-          <button class="preset" data-preset="thinice" type="button">Thin ice</button>
         </div>
       </section>
 
       <!-- Visualization -->
       <section class="panel viz">
         <div class="canvas-wrap">
-          <canvas id="scene" width="900" height="420"></canvas>
+          <canvas id="scene" width="900" height="360"></canvas>
         </div>
 
-        <div class="readout" id="readout" aria-live="polite">
-          <!-- populated by JS -->
-        </div>
+        <div id="validity" class="validity"></div>
+
+        <div class="readout" id="readout" aria-live="polite"></div>
 
         <div class="charts">
           <figure class="chart">
-            <figcaption>Wavelength vs. wave period</figcaption>
-            <canvas id="chartWavelength" width="430" height="260"></canvas>
+            <figcaption>Wave amplitude vs. distance into array</figcaption>
+            <canvas id="chartPenetration" width="430" height="260"></canvas>
           </figure>
           <figure class="chart">
-            <figcaption>Max bending strain vs. wave period</figcaption>
-            <canvas id="chartStrain" width="430" height="260"></canvas>
+            <figcaption>Connector bending moment vs. distance into array</figcaption>
+            <canvas id="chartMoment" width="430" height="260"></canvas>
           </figure>
         </div>
       </section>
@@ -109,14 +114,12 @@
 
     <footer class="app-footer">
       <p>
-        Model: linear flexural-gravity wave theory for a thin elastic plate on
-        finite-depth water. Educational tool &mdash; see
-        <a
-          href="https://en.wikipedia.org/wiki/Flexural-gravity_wave"
-          target="_blank"
-          rel="noopener"
-          >flexural-gravity waves</a
-        >.
+        Screening model: linear orthotropic-plate flexural-gravity
+        hydroelasticity. Structure and hydrodynamics are homogenised together
+        (no per-floater RAO/QTF). Effective Dₓ, D_y, η and areal mass must be
+        calibrated from a unit-cell sub-model; extreme/nonlinear connector and
+        mooring loads require local time-domain modelling. See the
+        <a href="README.md">README</a> for assumptions and limits.
       </p>
     </footer>
 
