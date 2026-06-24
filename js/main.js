@@ -1,63 +1,79 @@
 // main.js
-// Wires the controls to the equivalent-plate screening model, drives the
-// cross-section animation (wave attenuating into the array) and the live
-// charts (amplitude + connector moment vs distance into the array).
+// Orchestrates the 2D scattering solve and the 3D animation. Heavy solve runs
+// on parameter change (slider release); the 3D surface then animates by
+// phase-stepping the stored complex field, so playback stays smooth.
 
 (function () {
-  const { computeArray, penetrationProfile } = window.IcePhysics;
-  const { drawLineChart } = window.IceCharts;
+  const { computeScene } = window.Physics2D;
+  const R = window.Render3D;
 
-  // Dx and Dy sliders are entered as log10 of the rigidity in N·m.
   const CONTROLS = {
     T: (v) => `${v.toFixed(1)} s`,
     a: (v) => `${v.toFixed(2)} m`,
     H: (v) => `${v.toFixed(0)} m`,
-    heading: (v) => `${v.toFixed(0)}°`,
-    Dx: (v) => `${fmtPow(v)} N·m`,
-    Dy: (v) => `${fmtPow(v)} N·m`,
+    domLx: (v) => `${v.toFixed(0)} m`,
+    domLy: (v) => `${v.toFixed(0)} m`,
+    platLen: (v) => `${v.toFixed(0)} m`,
+    platWid: (v) => `${v.toFixed(0)} m`,
+    platAngle: (v) => `${v.toFixed(0)}°`,
+    platCxFrac: (v) => `${Math.round(v * 100)}% in`,
+    Dx: (v) => `${Math.pow(10, v).toExponential(1)} N·m`,
+    Dy: (v) => `${Math.pow(10, v).toExponential(1)} N·m`,
     eta: (v) => v.toFixed(2),
     ms: (v) => `${v.toFixed(0)} kg/m²`,
-    arrayLen: (v) => `${v.toFixed(0)} m`,
-    Lx: (v) => `${v.toFixed(1)} m`,
-    Ly: (v) => `${v.toFixed(1)} m`,
-    floatH: (v) => `${v.toFixed(2)} m`,
     speed: (v) => `${v.toFixed(2)}×`,
+    quality: (v) => ["fast", "balanced", "fine"][v],
   };
-
-  function fmtPow(log10v) {
-    return Math.pow(10, log10v).toExponential(1);
-  }
 
   const inputs = {};
   for (const id of Object.keys(CONTROLS)) inputs[id] = document.getElementById(id);
 
-  let playing = true;
-  let simTime = 0;
-  let lastFrame = performance.now();
-
-  const scene = document.getElementById("scene");
-  const sceneCtx = scene.getContext("2d");
-  const chartPenetration = document.getElementById("chartPenetration");
-  const chartMoment = document.getElementById("chartMoment");
+  const scene3d = document.getElementById("scene3d");
+  const heatmap = document.getElementById("heatmap");
+  const legend = document.getElementById("legend");
   const readoutEl = document.getElementById("readout");
   const validityEl = document.getElementById("validity");
+  const busyEl = document.getElementById("busy");
+
+  let scene = null;
+  let mesh = null;
+  let playing = true;
+  let phase = 0;
+  let lastFrame = performance.now();
+  let dirty = true;
 
   function readInputs() {
+    const domLx = parseFloat(inputs.domLx.value);
+    const domLy = parseFloat(inputs.domLy.value);
+    const ang = parseFloat(inputs.platAngle.value);
     return {
       T: parseFloat(inputs.T.value),
       a: parseFloat(inputs.a.value),
       H: parseFloat(inputs.H.value),
-      heading: parseFloat(inputs.heading.value),
+      heading: ang, // incident wave is +x; platform heading relative to it
       Dx: Math.pow(10, parseFloat(inputs.Dx.value)),
       Dy: Math.pow(10, parseFloat(inputs.Dy.value)),
       eta: parseFloat(inputs.eta.value),
       ms: parseFloat(inputs.ms.value),
-      arrayLen: parseFloat(inputs.arrayLen.value),
-      Lx: parseFloat(inputs.Lx.value),
-      Ly: parseFloat(inputs.Ly.value),
-      floatH: parseFloat(inputs.floatH.value),
-      rhoW: 1000, // fresh reservoir water
+      Lx: 1.2,
+      Ly: 0.4,
+      domLx,
+      domLy,
+      platLen: parseFloat(inputs.platLen.value),
+      platWid: parseFloat(inputs.platWid.value),
+      platAngle: ang,
+      platCx: domLx * parseFloat(inputs.platCxFrac.value),
+      platCy: domLy * 0.5,
     };
+  }
+
+  function qualityOpts() {
+    const q = parseInt(inputs.quality.value, 10);
+    return [
+      { maxN: 130, ppw: 7, maxSteps: 2600 },
+      { maxN: 165, ppw: 8, maxSteps: 3400 },
+      { maxN: 200, ppw: 9, maxSteps: 4200 },
+    ][q];
   }
 
   function updateLabels() {
@@ -67,35 +83,55 @@
     }
   }
 
-  // ---- Validity banner -----------------------------------------------------
-  function renderValidity(model) {
-    const map = {
-      ok: ["#1f6f43", "✓ Homogenisation OK"],
-      marginal: ["#7a5b16", "▲ Homogenisation marginal"],
-      poor: ["#7a2233", "✕ Homogenisation breaks down"],
-    };
-    const [bg, label] = map[model.validity];
-    validityEl.style.background = bg;
-    validityEl.textContent =
-      `${label} — ${model.cellsPerWave.toFixed(1)} cells per wavelength ` +
-      `(λ = ${model.lambda.toFixed(1)} m, cell = ${model.cellAlong.toFixed(2)} m). ` +
-      `Need ≳ 6–10 for the equivalent-plate continuum to be valid.`;
+  // ---- Heavy recompute (debounced via busy overlay + rAF) ------------------
+  function recompute() {
+    busyEl.hidden = false;
+    // Let the overlay paint before the blocking solve.
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() => {
+        const input = readInputs();
+        const t0 = performance.now();
+        scene = computeScene(input, qualityOpts());
+        mesh = R.buildMesh(scene, 76);
+        const dt = Math.round(performance.now() - t0);
+        R.drawHeatmap(heatmap, scene);
+        renderReadout(scene, dt);
+        renderValidity(scene);
+        busyEl.hidden = true;
+        dirty = false;
+      })
+    );
   }
 
-  // ---- Readout -------------------------------------------------------------
-  function renderReadout(model) {
-    const drift = model.meanDriftPerWidth;
+  function renderValidity(s) {
+    const ppw = s.pointsPerWave;
+    const cpw = s.cellsPerWaveOpen;
+    let bg = "#1f6f43";
+    let label = "✓ Resolution & homogenisation OK";
+    if (cpw < 6 || ppw < 6) {
+      bg = "#7a2233";
+      label = "✕ Under-resolved / homogenisation breaks down";
+    } else if (cpw < 10 || ppw < 8) {
+      bg = "#7a5b16";
+      label = "▲ Marginal resolution";
+    }
+    validityEl.style.background = bg;
+    validityEl.textContent =
+      `${label} — ${ppw.toFixed(1)} grid points/wavelength, ` +
+      `${cpw.toFixed(1)} floater cells/wavelength (λ open = ${s.lambda0.toFixed(1)} m, ` +
+      `λ under platform = ${s.lambdaP.toFixed(1)} m).`;
+  }
+
+  function renderReadout(s, solveMs) {
     const stats = [
-      ["Wavelength in array", model.lambda.toFixed(1), "m"],
-      ["Wavelength open water", model.lambdaOpen.toFixed(1), "m"],
-      ["Phase speed", model.phaseSpeed.toFixed(2), "m/s"],
-      ["Attenuation decay length", isFinite(model.decayLength) ? model.decayLength.toFixed(0) : "∞", "m"],
-      ["Connector moment (front)", (model.connectorMoment / 1e3).toFixed(2), "kN·m"],
-      ["Adjacent-cell rotation", model.relRotationDeg.toFixed(2), "°"],
-      ["Char. flexural length ℓ", model.charLength.toFixed(1), "m"],
-      ["Reflection coeff (crude)", model.R.toFixed(2), "–"],
-      ["Mean drift / crest width", (drift / 1e3).toFixed(2), "kN/m"],
-      ["Ice draft", model.draft.toFixed(3), "m"],
+      ["Open-water wavelength", s.lambda0.toFixed(1), "m"],
+      ["Wavelength under platform", s.lambdaP.toFixed(1), "m"],
+      ["Phase speed (open)", s.c0.toFixed(2), "m/s"],
+      ["Attenuation decay length", s.alphaP > 0 ? (1 / s.alphaP).toFixed(0) : "∞", "m"],
+      ["Lee transmission |A|/a", s.transmission.toFixed(2), "–"],
+      ["Min shadow |A|/a", s.shadowMin.toFixed(2), "–"],
+      ["Max amplification |A|/a", (s.maxAmp / s.a).toFixed(2), "–"],
+      ["Solve time", String(solveMs), "ms"],
     ];
     readoutEl.innerHTML = stats
       .map(
@@ -105,173 +141,65 @@
       .join("");
   }
 
-  // ---- Cross-section animation --------------------------------------------
-  // Side view along the wave heading: the plate flexes and the wave amplitude
-  // decays into the array. Vertical seams hint at discrete floater cells.
-  function drawScene(input, model) {
-    const dpr = window.devicePixelRatio || 1;
-    const cssW = scene.clientWidth || scene.width;
-    const cssH = (cssW * 360) / 900;
-    if (scene.width !== Math.round(cssW * dpr) || scene.height !== Math.round(cssH * dpr)) {
-      scene.width = Math.round(cssW * dpr);
-      scene.height = Math.round(cssH * dpr);
+  function drawLegend() {
+    const ctx = legend.getContext("2d");
+    const w = legend.width;
+    const h = legend.height;
+    for (let x = 0; x < w; x++) {
+      const v = (x / w) * 2;
+      const c = legendColor(v);
+      ctx.fillStyle = `rgb(${c[0]},${c[1]},${c[2]})`;
+      ctx.fillRect(x, 0, 1, h - 14);
     }
-    const ctx = sceneCtx;
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    const W = cssW;
-    const H = cssH;
-    ctx.clearRect(0, 0, W, H);
-
-    const yWater = H * 0.45;
-
-    // Show enough of the array to see attenuation: a few decay lengths or a few
-    // wavelengths, capped by the array length.
-    const wantM = isFinite(model.decayLength)
-      ? Math.min(model.decayLength * 3, input.arrayLen)
-      : Math.min(model.lambda * 3, input.arrayLen);
-    const xSpan = Math.max(wantM, model.lambda * 1.5, 10);
-    const mPerPxX = xSpan / W;
-
-    const verticalSpanM = Math.max(input.a * 2.4, input.floatH * 1.6, 0.4);
-    const vScale = (H * 0.3) / verticalSpanM;
-
-    const k = model.k;
-    const omega = model.omega;
-    const alpha = model.alpha;
-    const draftPx = model.draft * vScale;
-    const freeboardPx = model.freeboard * vScale;
-
-    // Sky.
-    const sky = ctx.createLinearGradient(0, 0, 0, yWater);
-    sky.addColorStop(0, "#0c1622");
-    sky.addColorStop(1, "#16263a");
-    ctx.fillStyle = sky;
-    ctx.fillRect(0, 0, W, yWater);
-
-    // Surface elevation with attenuation into the array.
-    const eta = (xPx) => {
-      const xm = xPx * mPerPxX;
-      const a = input.a * Math.exp(-alpha * xm);
-      return a * Math.cos(k * xm - omega * simTime);
-    };
-
-    // Water body.
-    const water = ctx.createLinearGradient(0, yWater, 0, H);
-    water.addColorStop(0, "#2a6ea0");
-    water.addColorStop(1, "#0e3354");
-    ctx.fillStyle = water;
-    ctx.beginPath();
-    ctx.moveTo(0, H);
-    for (let x = 0; x <= W; x += 2) ctx.lineTo(x, yWater + draftPx - eta(x) * vScale);
-    ctx.lineTo(W, H);
-    ctx.closePath();
-    ctx.fill();
-
-    // Plate strip.
-    ctx.beginPath();
-    for (let x = 0; x <= W; x += 2) {
-      const topY = yWater - freeboardPx - eta(x) * vScale;
-      if (x === 0) ctx.moveTo(x, topY);
-      else ctx.lineTo(x, topY);
-    }
-    for (let x = W; x >= 0; x -= 2) ctx.lineTo(x, yWater + draftPx - eta(x) * vScale);
-    ctx.closePath();
-    ctx.fillStyle = "#e6f1fb";
-    ctx.fill();
-    ctx.strokeStyle = "#7fb4d8";
-    ctx.lineWidth = 1;
-    ctx.stroke();
-
-    // Floater seams (every cell spacing along the heading).
-    const cellPx = model.cellAlong / mPerPxX;
-    if (cellPx > 4) {
-      ctx.strokeStyle = "#9bbdd6";
-      ctx.lineWidth = 0.6;
-      for (let xm = 0; xm <= xSpan; xm += model.cellAlong) {
-        const x = xm / mPerPxX;
-        const topY = yWater - freeboardPx - eta(x) * vScale;
-        const botY = yWater + draftPx - eta(x) * vScale;
-        ctx.beginPath();
-        ctx.moveTo(x, topY);
-        ctx.lineTo(x, botY);
-        ctx.stroke();
-      }
-    }
-
-    // Mean waterline.
-    ctx.strokeStyle = "#ffffff33";
-    ctx.setLineDash([6, 5]);
-    ctx.beginPath();
-    ctx.moveTo(0, yWater);
-    ctx.lineTo(W, yWater);
-    ctx.stroke();
-    ctx.setLineDash([]);
-
-    ctx.fillStyle = "#cfe3f5cc";
-    ctx.font = "12px system-ui, sans-serif";
+    ctx.fillStyle = "#9fb3c8";
+    ctx.font = "10px system-ui";
     ctx.textAlign = "left";
-    ctx.textBaseline = "top";
-    ctx.fillText(
-      `→ wave into array (heading ${input.heading.toFixed(0)}°)   |   view ≈ ${xSpan.toFixed(0)} m   |   vert. ×${vScale.toFixed(0)}`,
-      10,
-      8
-    );
+    ctx.fillText("0", 0, h - 2);
+    ctx.textAlign = "center";
+    ctx.fillText("1 (incident)", w * 0.5, h - 2);
+    ctx.textAlign = "right";
+    ctx.fillText("2", w, h - 2);
+  }
+  function legendColor(v) {
+    const x = Math.max(0, Math.min(2, v));
+    if (x < 1) return [Math.round(20 + 40 * x), Math.round(40 + 180 * x), Math.round(90 + 165 * x)];
+    const t = Math.min(1, x - 1);
+    return [Math.round(60 + 195 * t), Math.round(220 - 120 * t), Math.round(255 - 230 * t)];
   }
 
-  // ---- Charts --------------------------------------------------------------
-  function renderCharts(input, model) {
-    const prof = penetrationProfile(input, model, 120);
-
-    drawLineChart(chartPenetration, {
-      series: [
-        { color: "#58c4ff", label: "amplitude", data: prof.dist.map((x, i) => ({ x, y: prof.amp[i] })) },
-      ],
-      xLabel: "Distance into array (m)",
-      yTickFormatter: (v) => v.toFixed(2),
-    });
-
-    drawLineChart(chartMoment, {
-      series: [
-        { color: "#ff7a93", label: "connector moment", data: prof.dist.map((x, i) => ({ x, y: prof.moment[i] })) },
-      ],
-      xLabel: "Distance into array (m)",
-      yTickFormatter: (v) => v.toFixed(1),
-    });
-  }
-
-  // ---- Loop ----------------------------------------------------------------
+  // ---- Animation loop ------------------------------------------------------
   function frame(now) {
     const dt = (now - lastFrame) / 1000;
     lastFrame = now;
     const speed = parseFloat(inputs.speed.value);
-    if (playing) simTime += dt * speed;
-
-    const input = readInputs();
-    const model = computeArray(input);
-    drawScene(input, model);
+    if (playing) phase += dt * speed * 2.0;
+    if (scene && mesh) R.drawSurface(scene3d, scene, mesh, phase);
     requestAnimationFrame(frame);
   }
 
-  function refreshStatic() {
-    updateLabels();
-    const input = readInputs();
-    const model = computeArray(input);
-    renderValidity(model);
-    renderReadout(model);
-    renderCharts(input, model);
+  // ---- Wiring --------------------------------------------------------------
+  for (const id of Object.keys(CONTROLS)) {
+    inputs[id].addEventListener("input", () => {
+      updateLabels();
+      if (id === "speed") return; // no resolve needed
+    });
+    inputs[id].addEventListener("change", () => {
+      if (id === "speed") return;
+      recompute();
+    });
   }
-
-  for (const id of Object.keys(CONTROLS)) inputs[id].addEventListener("input", refreshStatic);
 
   document.getElementById("playPause").addEventListener("click", (e) => {
     playing = !playing;
     e.target.textContent = playing ? "Pause" : "Play";
   });
-  document.getElementById("reset").addEventListener("click", () => {
-    simTime = 0;
-  });
-  window.addEventListener("resize", refreshStatic);
+  document.getElementById("resetView").addEventListener("click", () => R.resetView());
 
-  refreshStatic();
+  R.attachControls(scene3d, () => {});
+
+  // ---- Init ----------------------------------------------------------------
+  updateLabels();
+  drawLegend();
+  recompute();
   requestAnimationFrame(frame);
 })();

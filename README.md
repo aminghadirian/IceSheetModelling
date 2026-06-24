@@ -1,112 +1,107 @@
-# Floating Array — Equivalent-Plate Hydroelastic Screening Tool
+# Floating Platform Wake — 3D Wave Scattering (Screening Tool)
 
-A browser-based **screening** model for a large moored floating array (for
-example a floating-PV field of thousands of small floaters) that is too large to
-model body-by-body in a panel/mooring code. The array is treated as an
-**equivalent orthotropic thin plate floating on water**, and the response is
-solved with linear **flexural-gravity (hydroelastic)** theory.
+An interactive, browser-based **screening** model of how a *finite* floating
+platform / array sitting in a larger water basin scatters an incoming wave:
+**reflection** in front of it, **diffraction** around its edges, attenuation
+under it, and the **downstream wake** (shadow zone and its recovery). Rendered
+as an animated 3D water surface.
 
-> ⚠️ **This is a screening tool, not a design-load tool.** It gives global
-> response, wave penetration and a first-pass connector-load distribution.
-> Extreme and nonlinear loads (snap loads, connector gap/contact, slow-drift
-> mooring response) require local time-domain sub-modelling. See *Limits* below.
+> ⚠️ **Screening tool, not a design-load tool.** It shows global wave-field
+> behaviour and the wake. Extreme/nonlinear connector and mooring loads need
+> local time-domain sub-modelling. See *Limits*.
 
-## Why this approach
+## What it solves
 
-A 300 × 400 m array of thousands of floaters and thousands of mooring lines is
-intractable as a discrete body-by-body model. Very large floating structures
-(floating runways, pontoon bridges) are routinely reduced to an **equivalent
-plate on water** — the same idea used here. Crucially, the model homogenises
-the **structure and the hydrodynamics together**: there are *no per-floater
-RAOs/QTFs* (an isolated-body RAO is meaningless inside a dense, hydrodynamically
-interacting, wave-attenuating array). Instead the plate's own hydroelastic
-dispersion supplies the fluid coupling.
-
-## The model
-
-Linear potential-flow theory for a thin plate on finite-depth water gives the
-flexural-gravity dispersion relation:
+A monochromatic wave field is computed by time-marching the single-frequency,
+variable-coefficient **mild-slope wave equation** to periodic steady state:
 
 ```
-omega^2 = g·k·tanh(k·H) · (1 + (D/(rhoW·g))·k^4)
-          / (1 + (ms/rhoW)·k·tanh(k·H))
+u_tt = div( c(x,y)^2 · grad u ) − 2·gamma(x,y)·u_t + S(x,y,t)
 ```
 
-- `D`  — effective bending rigidity in the propagation direction [N·m]
-- `ms` — areal mass of the array [kg/m²]
-- `H`  — water depth, `k` wavenumber, `omega` angular frequency
+- `c(x,y) = omega / k(x,y)` — local phase speed. Open water uses the
+  open-water wavenumber `k0` (`omega² = g·k·tanh(kH)`); the platform footprint
+  uses the **flexural-gravity** wavenumber `kP` (a longer wavelength). This
+  reproduces the correct refraction, **reflection** at the platform edge,
+  **diffraction** around it, and the **downstream shadow/wake**.
+- `gamma` — dissipation: a structural loss term inside the platform (giving
+  wave attenuation under it) plus **sponge layers** at the basin edges so the
+  box behaves like open water (no spurious tank reflections).
+- `S` — a soft line source launching the incident plane wave.
 
-**Orthotropy** (rectangular floaters ⇒ direction-dependent stiffness). For a
-wave heading `theta` to the array x-axis, Huber's orthotropic approximation:
+The solver runs **once per parameter change** (≈0.4–1.5 s), stores the complex
+amplitude field `A(x,y)`, and the 3D surface then animates by phase-stepping
+that stored field — so playback stays smooth without re-solving.
 
-```
-D(theta) = Dx·cos⁴θ + 2·√(Dx·Dy)·cos²θ·sin²θ + Dy·sin⁴θ
-```
+Because the run is **full 2D and time-domain**, it captures upstream reflection
+and standing waves as well as the downstream wake (unlike a forward-marching
+parabolic approximation).
 
-**Damping / attenuation.** A structural loss factor `eta` (complex rigidity
-`D → D(1+i·eta)`) makes the wavenumber complex, giving spatial **attenuation**
-of the wave into the array (amplitude `~ exp(-alpha·x)`). A 1-D propagating
-flexural-gravity wave is otherwise conservative, so this dissipative decay is
-controlled entirely by `eta` — the most uncertain input, to be calibrated.
+### Why a continuum / "equivalent plate"?
 
-**Outputs**
+A 300 × 400 m array of thousands of floaters and moorings is intractable
+body-by-body. The platform is therefore homogenised into a region of modified
+(complex) flexural-gravity wavenumber — **structure and hydrodynamics together,
+with no per-floater RAO/QTF** (an isolated-body RAO is meaningless inside a
+dense, hydrodynamically interacting, wave-attenuating array). The effective
+`Dx, Dy, eta` and areal mass are the screening inputs.
 
-- Wavelength in the array vs. open water; phase/group speed.
-- Attenuation decay length and amplitude-vs-distance into the array.
-- **Connector loads**: bending moment per unit width `M = D·κ` from the wave
-  curvature `κ = a·k²`, the per-connector moment over its tributary width, and
-  the relative rotation between adjacent floaters.
-- Crude leading-edge reflection coefficient and mean **drift force** per unit
-  crest width (energy estimate) for a first mooring-load sanity check.
-- A live **homogenisation-validity** check (cells per wavelength).
+## Visualisation
+
+- **3D surface** — animated, shaded height field; the platform footprint is
+  drawn in grey. Drag to orbit, scroll to zoom, *Reset camera* to recentre.
+- **Top-down amplitude map** `|A|/a` — blue = sheltered, cyan ≈ incident,
+  yellow/red = amplified (reflection / focusing). The shadow + edge diffraction
+  lobes behind the platform are the wake.
+- **Readouts** — open vs. under-platform wavelength, attenuation decay length,
+  lee transmission, minimum shadow amplitude, peak amplification, solve time.
+- **Validity banner** — grid points per wavelength and floater cells per
+  wavelength (homogenisation check), updated live.
 
 ## Controls
 
-- **Wave:** period, amplitude, water depth, heading.
-- **Array (equivalent plate):** bending rigidity Dₓ and D_y (entered as log₁₀
-  N·m), structural loss factor η, areal mass, array length.
-- **Floater unit cell:** footprint Lₓ × L_y and height (set the cell spacing and
-  buoyancy geometry).
+Wave (period, amplitude, depth) · Basin (length × width) · Platform (size,
+heading angle, position along x) · Equivalent plate (Dₓ, D_y as log₁₀ N·m, loss
+factor η, areal mass) · Animation speed · **Solver quality** (fast / balanced /
+fine — grid resolution vs. speed).
 
-Defaults reflect a reservoir floating-PV case: 16 m depth, T ≈ 3 s, small waves,
-1.2 × 0.4 × 0.4 m floaters.
+Defaults reflect a reservoir floating-PV case (16 m depth, T ≈ 3 s, small waves,
+orthotropic plate from ~1.2 × 0.4 m floaters).
 
 ## Validity and limits (read this)
 
-The equivalent-plate continuum is trustworthy only when:
+Trustworthy only when:
 
-1. **Scale separation** — wavelength ≫ floater cell (rule of thumb ≳ 6–10
-   cells per wavelength; the app flags this live). Short, steep wind-sea on a
-   small cell breaks the continuum and excites discrete/band-gap effects.
-2. **Connections carry moment** — true here (floaters bend via their flap
-   extensions), so a plate is appropriate. Pin-only connections would instead
-   call for a tension/membrane model.
-3. **Effective properties are calibrated** — Dₓ, D_y, η and `ms` must come from
-   a detailed **unit-cell sub-model**; the defaults are placeholders.
+1. **Resolution** — ≳ 8 grid points per wavelength (banner flags this; raise
+   *Solver quality* if marginal).
+2. **Scale separation** — wavelength ≫ floater cell (≳ 6–10 cells/wavelength)
+   for the equivalent-continuum to hold.
+3. **Calibrated properties** — Dₓ, D_y, η, areal mass from a unit-cell
+   sub-model; the defaults are placeholders.
 
-What this tool **cannot** do (needs local nonlinear time-domain modelling):
+Deliberately **not** modelled (need local nonlinear time-domain analysis):
 
-- Snap loads, connector gaps/contact, tension-only / compression-buckling
-  asymmetry.
-- Slow-drift mooring resonance, line dynamics, seabed friction, nonlinear
-  catenary stiffness.
-- Edge/corner stress concentrations and mooring-attachment hotspots.
-- Hydrodynamic gap resonances and individual-floater heave/pitch resonances.
+- The platform is a region of modified wavenumber, **not** the full hydroelastic
+  plate-edge conditions, so near-edge bending detail is approximate.
+- Snap loads, connector gap/contact, tension-only / buckling asymmetry.
+- Slow-drift mooring resonance, line dynamics, nonlinear catenary stiffness.
+- Individual-floater and gap resonances; nonlinear/steep-wave effects.
+- Single monochromatic frequency (no spectrum) and constant water depth.
 
 Recommended workflow: **unit-cell sub-model → this global screening tool →
-local time-domain sub-model at the hotspots** it identifies.
+local time-domain sub-model at the hotspots it reveals.**
 
 ## Tech
 
-Plain HTML/CSS/JavaScript with the Canvas 2D API. **No build step, no external
-dependencies.**
+Plain HTML/CSS/JavaScript, Canvas 2D. **No build step, no external
+dependencies** (the 3D renderer is hand-rolled).
 
 ```
-index.html      markup + control panel
-styles.css      styling
-js/physics.js   dispersion solver, orthotropy, attenuation, connector loads
-js/charts.js    minimal canvas line charts
-js/main.js      UI wiring + animation loop
+index.html         markup + controls
+styles.css         styling
+js/physics2d.js    dispersion + time-domain mild-slope scattering solver
+js/render3d.js     dependency-free 3D height-field renderer + heatmap
+js/main.js         UI wiring, solve orchestration, animation loop
 ```
 
 ## Run locally
@@ -117,9 +112,7 @@ python3 -m http.server 8000   # then open http://localhost:8000
 
 ## Deploy on GitHub Pages (from this branch)
 
-These files live at the repository root and need no build:
-
 1. Repository **Settings → Pages**.
 2. **Source:** Deploy from a branch.
 3. **Branch:** `claude/ice-sheet-wave-model-rl9cvz`, folder `/ (root)` → **Save**.
-4. Open the published URL shown on that page. (`.nojekyll` is included.)
+4. Open the published URL. (`.nojekyll` is included.)

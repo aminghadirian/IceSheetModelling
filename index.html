@@ -3,46 +3,69 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Floating Array Screening &mdash; Equivalent-Plate Hydroelastic Model</title>
+    <title>Floating Platform Wake &mdash; 3D Wave Scattering</title>
     <meta
       name="description"
-      content="Screening model for a large moored floating array (e.g. floating PV) treated as an equivalent orthotropic plate on water — flexural-gravity hydroelasticity."
+      content="3D screening model of wave scattering by a finite floating platform/array in a basin: reflection, diffraction and the downstream wake."
     />
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
     <header class="app-header">
-      <h1>Floating Array &mdash; Equivalent-Plate Screening</h1>
+      <h1>Floating Platform Wake &mdash; 3D Wave Scattering</h1>
       <p class="subtitle">
-        A large moored floating array (many small floaters) modelled as an
-        <strong>orthotropic thin plate on water</strong>. Flexural-gravity
-        (hydroelastic) screening for global response and connector loads.
-        <em>Screening only &mdash; not a design-load tool.</em>
+        A finite floating platform/array in a larger basin, modelled as a region
+        of modified (flexural-gravity) wavenumber. Full 2D scattering &mdash;
+        reflection, edge diffraction and the <strong>downstream wake</strong>.
+        <em>Screening tool, not a design-load tool.</em>
       </p>
     </header>
 
     <main class="layout">
-      <!-- Controls -->
       <section class="panel controls" aria-label="Model parameters">
-        <h2>Wave (reservoir)</h2>
+        <h2>Wave</h2>
         <div class="control" data-control="T">
-          <label for="T">Wave period <span class="val"></span></label>
+          <label for="T">Period <span class="val"></span></label>
           <input type="range" id="T" min="1.5" max="8" step="0.1" value="3" />
         </div>
         <div class="control" data-control="a">
-          <label for="a">Wave amplitude <span class="val"></span></label>
+          <label for="a">Amplitude <span class="val"></span></label>
           <input type="range" id="a" min="0.02" max="1" step="0.01" value="0.2" />
         </div>
         <div class="control" data-control="H">
           <label for="H">Water depth <span class="val"></span></label>
           <input type="range" id="H" min="2" max="50" step="1" value="16" />
         </div>
-        <div class="control" data-control="heading">
-          <label for="heading">Wave heading (to x-axis) <span class="val"></span></label>
-          <input type="range" id="heading" min="0" max="90" step="1" value="0" />
+
+        <h2>Basin</h2>
+        <div class="control" data-control="domLx">
+          <label for="domLx">Length (x, wave dir.) <span class="val"></span></label>
+          <input type="range" id="domLx" min="150" max="600" step="10" value="320" />
+        </div>
+        <div class="control" data-control="domLy">
+          <label for="domLy">Width (y) <span class="val"></span></label>
+          <input type="range" id="domLy" min="150" max="600" step="10" value="320" />
         </div>
 
-        <h2>Array (equivalent plate)</h2>
+        <h2>Platform</h2>
+        <div class="control" data-control="platLen">
+          <label for="platLen">Length (along x) <span class="val"></span></label>
+          <input type="range" id="platLen" min="20" max="300" step="5" value="120" />
+        </div>
+        <div class="control" data-control="platWid">
+          <label for="platWid">Width (along y) <span class="val"></span></label>
+          <input type="range" id="platWid" min="20" max="300" step="5" value="80" />
+        </div>
+        <div class="control" data-control="platAngle">
+          <label for="platAngle">Heading angle <span class="val"></span></label>
+          <input type="range" id="platAngle" min="0" max="90" step="1" value="0" />
+        </div>
+        <div class="control" data-control="platCxFrac">
+          <label for="platCxFrac">Position along x <span class="val"></span></label>
+          <input type="range" id="platCxFrac" min="0.25" max="0.6" step="0.01" value="0.35" />
+        </div>
+
+        <h2>Equivalent plate</h2>
         <div class="control" data-control="Dx">
           <label for="Dx">Bending rigidity Dₓ <span class="val"></span></label>
           <input type="range" id="Dx" min="3" max="8" step="0.05" value="5.7" />
@@ -52,61 +75,51 @@
           <input type="range" id="Dy" min="3" max="8" step="0.05" value="5.0" />
         </div>
         <div class="control" data-control="eta">
-          <label for="eta">Structural loss factor η <span class="val"></span></label>
+          <label for="eta">Loss factor η <span class="val"></span></label>
           <input type="range" id="eta" min="0" max="0.4" step="0.01" value="0.1" />
         </div>
         <div class="control" data-control="ms">
           <label for="ms">Areal mass <span class="val"></span></label>
           <input type="range" id="ms" min="20" max="200" step="5" value="80" />
         </div>
-        <div class="control" data-control="arrayLen">
-          <label for="arrayLen">Array length (heading dir.) <span class="val"></span></label>
-          <input type="range" id="arrayLen" min="50" max="600" step="10" value="400" />
-        </div>
 
-        <h2>Floater unit cell</h2>
-        <div class="control" data-control="Lx">
-          <label for="Lx">Floater size x <span class="val"></span></label>
-          <input type="range" id="Lx" min="0.2" max="3" step="0.1" value="1.2" />
-        </div>
-        <div class="control" data-control="Ly">
-          <label for="Ly">Floater size y <span class="val"></span></label>
-          <input type="range" id="Ly" min="0.2" max="3" step="0.1" value="0.4" />
-        </div>
-        <div class="control" data-control="floatH">
-          <label for="floatH">Floater height <span class="val"></span></label>
-          <input type="range" id="floatH" min="0.1" max="1" step="0.05" value="0.4" />
-        </div>
-
-        <h2>Animation</h2>
+        <h2>View</h2>
         <div class="control" data-control="speed">
-          <label for="speed">Speed <span class="val"></span></label>
+          <label for="speed">Animation speed <span class="val"></span></label>
           <input type="range" id="speed" min="0" max="3" step="0.05" value="1" />
+        </div>
+        <div class="control" data-control="quality">
+          <label for="quality">Solver quality <span class="val"></span></label>
+          <input type="range" id="quality" min="0" max="2" step="1" value="1" />
         </div>
         <div class="buttons">
           <button id="playPause" type="button">Pause</button>
-          <button id="reset" type="button">Reset view</button>
+          <button id="resetView" type="button">Reset camera</button>
         </div>
       </section>
 
-      <!-- Visualization -->
       <section class="panel viz">
-        <div class="canvas-wrap">
-          <canvas id="scene" width="900" height="360"></canvas>
+        <div class="canvas-wrap" style="position: relative">
+          <canvas id="scene3d" width="900" height="520"></canvas>
+          <div id="busy" class="busy" hidden>computing wave field…</div>
         </div>
 
         <div id="validity" class="validity"></div>
-
         <div class="readout" id="readout" aria-live="polite"></div>
 
         <div class="charts">
           <figure class="chart">
-            <figcaption>Wave amplitude vs. distance into array</figcaption>
-            <canvas id="chartPenetration" width="430" height="260"></canvas>
+            <figcaption>Top-down amplitude |A| / a (wave travels upward)</figcaption>
+            <canvas id="heatmap" class="heatmap" width="170" height="170"></canvas>
           </figure>
-          <figure class="chart">
-            <figcaption>Connector bending moment vs. distance into array</figcaption>
-            <canvas id="chartMoment" width="430" height="260"></canvas>
+          <figure class="chart legendfig">
+            <figcaption>Amplitude scale</figcaption>
+            <canvas id="legend" width="220" height="40"></canvas>
+            <p class="legendnote">
+              Blue ≈ sheltered (low), cyan ≈ incident, yellow/red ≈ amplified
+              (reflection / focusing). The shadow + diffraction lobes behind the
+              platform are the <strong>downstream wake</strong>.
+            </p>
           </figure>
         </div>
       </section>
@@ -114,17 +127,18 @@
 
     <footer class="app-footer">
       <p>
-        Screening model: linear orthotropic-plate flexural-gravity
-        hydroelasticity. Structure and hydrodynamics are homogenised together
-        (no per-floater RAO/QTF). Effective Dₓ, D_y, η and areal mass must be
-        calibrated from a unit-cell sub-model; extreme/nonlinear connector and
-        mooring loads require local time-domain modelling. See the
-        <a href="README.md">README</a> for assumptions and limits.
+        Screening model: single-frequency variable-coefficient mild-slope wave
+        equation, time-marched to steady state with sponge boundaries. The
+        platform is a region of modified flexural-gravity wavenumber (no
+        per-floater RAO/QTF; not full hydroelastic edge mechanics). Calibrate
+        Dₓ, D_y, η, areal mass from a unit-cell sub-model and verify extreme
+        loads with local time-domain modelling. See the
+        <a href="README.md">README</a>.
       </p>
     </footer>
 
-    <script src="js/physics.js"></script>
-    <script src="js/charts.js"></script>
+    <script src="js/physics2d.js"></script>
+    <script src="js/render3d.js"></script>
     <script src="js/main.js"></script>
   </body>
 </html>
