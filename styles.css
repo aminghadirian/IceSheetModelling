@@ -117,57 +117,19 @@ button:active {
   flex-direction: column;
   gap: 14px;
 }
-.canvas-wrap {
-  background: var(--water-deep);
-  border-radius: 10px;
-  overflow: hidden;
-}
-#scene3d {
-  display: block;
-  width: 100%;
-  height: auto;
-  cursor: grab;
-  touch-action: none;
-}
-#scene3d:active {
-  cursor: grabbing;
-}
-.busy {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(8, 16, 26, 0.55);
-  color: #cfe3f5;
-  font-size: 0.95rem;
-  letter-spacing: 0.3px;
-  z-index: 2;
-}
-.heatmap {
-  image-rendering: pixelated;
-  width: 100%;
-  height: auto;
-  border-radius: 6px;
-}
-.legendfig .legendnote {
-  margin: 8px 0 0;
-  font-size: 0.78rem;
-  color: var(--muted);
-  line-height: 1.4;
-}
-#legend {
-  width: 100%;
-  height: auto;
-}
-
-.validity {
+.energybar {
   border-radius: 8px;
-  padding: 9px 12px;
+  padding: 10px 13px;
   font-size: 0.85rem;
-  font-weight: 600;
   color: #fff;
   background: #1f6f43;
+  line-height: 1.45;
+}
+.energybar strong {
+  font-weight: 700;
+}
+.chart.wide {
+  grid-column: 1 / -1;
 }
 
 .readout {

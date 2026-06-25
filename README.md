@@ -1,113 +1,109 @@
-# Floating Platform Wake — 3D Wave Scattering (Screening Tool)
+# Wave Scattering by a Floating Elastic Plate
 
-An interactive, browser-based **screening** model of how a *finite* floating
-platform / array sitting in a larger water basin scatters an incoming wave:
-**reflection** in front of it, **diffraction** around its edges, attenuation
-under it, and the **downstream wake** (shadow zone and its recovery). Rendered
-as an animated 3D water surface.
+A small, **physically rigorous** browser tool for the canonical hydroelastic
+problem: scattering of a linear water wave by a **finite floating elastic
+plate** (a homogenised model of a floating array / ice sheet / VLFS). It is
+solved by **eigenfunction matching** with the proper plate free-edge conditions
+and **validates itself** every run by checking energy conservation.
 
-> ⚠️ **Screening tool, not a design-load tool.** It shows global wave-field
-> behaviour and the wake. Extreme/nonlinear connector and mooring loads need
-> local time-domain sub-modelling. See *Limits*.
+This deliberately replaces an earlier 2D/3D visualisation that, while
+impressive, represented the platform only as a region of modified wavenumber —
+not the actual floating-plate boundary value problem. Here every number maps to
+a real physical quantity and is checked against `R² + T² = 1`.
 
-## What it solves
+## The model
 
-A monochromatic wave field is computed by time-marching the single-frequency,
-variable-coefficient **mild-slope wave equation** to periodic steady state:
+2D problem (x–z), constant depth `H`, free surface `z = 0`, three regions:
 
 ```
-u_tt = div( c(x,y)^2 · grad u ) − 2·gamma(x,y)·u_t + S(x,y,t)
+ Region I (x<0)   |  Region II (0<x<L)  |  Region III (x>L)
+ open water        |  floating plate      |  open water
+ incident + refl.  |  flexural-gravity    |  transmitted
 ```
 
-- `c(x,y) = omega / k(x,y)` — local phase speed. Open water uses the
-  open-water wavenumber `k0` (`omega² = g·k·tanh(kH)`); the platform footprint
-  uses the **flexural-gravity** wavenumber `kP` (a longer wavelength). This
-  reproduces the correct refraction, **reflection** at the platform edge,
-  **diffraction** around it, and the **downstream shadow/wake**.
-- `gamma` — dissipation: a structural loss term inside the platform (giving
-  wave attenuation under it) plus **sponge layers** at the basin edges so the
-  box behaves like open water (no spurious tank reflections).
-- `S` — a soft line source launching the incident plane wave.
+Velocity potentials are expanded in depth eigenmodes `cosh(k(z+H))/cosh(kH)`.
+Dispersion relations (`K = ω²/g`, `β = D/(ρ_w g)`, `d = m_s/ρ_w`):
 
-The solver runs **once per parameter change** (≈0.4–1.5 s), stores the complex
-amplitude field `A(x,y)`, and the 3D surface then animates by phase-stepping
-that stored field — so playback stays smooth without re-solving.
+```
+open water:  k·tanh(kH) = K
+plate:       (β·k⁴ + 1 − d·K) · k·tanh(kH) = K
+```
 
-Because the run is **full 2D and time-domain**, it captures upstream reflection
-and standing waves as well as the downstream wake (unlike a forward-marching
-parabolic approximation).
+At each interface we impose continuity of potential and horizontal velocity over
+the full depth (projected onto the water modes), **plus** the plate free-edge
+conditions — zero bending moment `w_xx = 0` and zero shear `w_xxx = 0` at both
+plate ends. The plate dispersion contributes one propagating, two complex and
+many evanescent roots; structural damping enters as `D → D(1 − iη)`, which
+dissipates energy. The resulting complex linear system is solved directly.
 
-### Why a continuum / "equivalent plate"?
+### Outputs (all physical, all from one solve)
 
-A 300 × 400 m array of thousands of floaters and moorings is intractable
-body-by-body. The platform is therefore homogenised into a region of modified
-(complex) flexural-gravity wavenumber — **structure and hydrodynamics together,
-with no per-floater RAO/QTF** (an isolated-body RAO is meaningless inside a
-dense, hydrodynamically interacting, wave-attenuating array). The effective
-`Dx, Dy, eta` and areal mass are the screening inputs.
+- **Reflection `R` and transmission `T`** coefficients, vs. wave period.
+- **Energy check** `R² + T²` — equals 1 with no damping (shown live; the
+  numerical residual is ~10⁻¹³), and `1 − R² − T²` is the absorbed fraction
+  when `η > 0`.
+- **Deflection** profile `|w(x)|/a` along the plate.
+- **Bending moment** `|M(x)| = D·|w_xx|` along the plate, and **maximum bending
+  strain** `(h/2)·|w_xx|` → connector / fracture loads.
+- **Mean drift force** per unit crest width (momentum estimate from `R`, `T`)
+  for a mooring-load sanity check.
 
-## Visualisation
+### Validation
 
-- **3D surface** — animated, shaded height field; the platform footprint is
-  drawn in grey. Drag to orbit, scroll to zoom, *Reset camera* to recentre.
-- **Top-down amplitude map** `|A|/a` — blue = sheltered, cyan ≈ incident,
-  yellow/red = amplified (reflection / focusing). The shadow + edge diffraction
-  lobes behind the platform are the wake.
-- **Readouts** — open vs. under-platform wavelength, attenuation decay length,
-  lee transmission, minimum shadow amplitude, peak amplification, solve time.
-- **Validity banner** — grid points per wavelength and floater cells per
-  wavelength (homogenisation check), updated live.
+The solver is verified in `node`:
+
+- **Energy conservation** `R² + T² = 1` to ~10⁻¹³ across periods and stiffnesses
+  (no damping).
+- **Damping** gives `R² + T² < 1` with absorbed energy increasing monotonically
+  with `η`.
+- **Limits**: a vanishingly small or very soft plate is transparent
+  (`R→0, T→1`); long waves pass through; short / stiff plates reflect strongly;
+  the wavelength lengthens under the plate.
 
 ## Controls
 
-Wave (period, amplitude, depth) · Basin (length × width) · Platform (size,
-heading angle, position along x) · Equivalent plate (Dₓ, D_y as log₁₀ N·m, loss
-factor η, areal mass) · Animation speed · **Solver quality** (fast / balanced /
-fine — grid resolution vs. speed).
+Wave (period, amplitude, depth) · Plate (length, flexural rigidity `D` as
+log₁₀ N·m, areal mass, section depth for strain, loss factor `η`).
 
-Defaults reflect a reservoir floating-PV case (16 m depth, T ≈ 3 s, small waves,
-orthotropic plate from ~1.2 × 0.4 m floaters).
+## Scope and limits
 
-## Validity and limits (read this)
+- **Linear** theory, small amplitude, **single frequency**, constant depth,
+  normal incidence, uniform plate properties.
+- The plate is a **homogenised continuum**: effective `D`, areal mass and `η`
+  must be calibrated from a unit-cell sub-model of the real floater + connector.
+- Still **not** captured (needs local nonlinear time-domain analysis): snap
+  loads, connector gap/contact, tension-only / buckling asymmetry, slow-drift
+  mooring resonance, line dynamics, individual-floater resonances, oblique-sea
+  spreading and irregular spectra.
 
-Trustworthy only when:
-
-1. **Resolution** — ≳ 8 grid points per wavelength (banner flags this; raise
-   *Solver quality* if marginal).
-2. **Scale separation** — wavelength ≫ floater cell (≳ 6–10 cells/wavelength)
-   for the equivalent-continuum to hold.
-3. **Calibrated properties** — Dₓ, D_y, η, areal mass from a unit-cell
-   sub-model; the defaults are placeholders.
-
-Deliberately **not** modelled (need local nonlinear time-domain analysis):
-
-- The platform is a region of modified wavenumber, **not** the full hydroelastic
-  plate-edge conditions, so near-edge bending detail is approximate.
-- Snap loads, connector gap/contact, tension-only / buckling asymmetry.
-- Slow-drift mooring resonance, line dynamics, nonlinear catenary stiffness.
-- Individual-floater and gap resonances; nonlinear/steep-wave effects.
-- Single monochromatic frequency (no spectrum) and constant water depth.
-
-Recommended workflow: **unit-cell sub-model → this global screening tool →
+Recommended workflow: **unit-cell sub-model → this validated global model →
 local time-domain sub-model at the hotspots it reveals.**
 
 ## Tech
 
-Plain HTML/CSS/JavaScript, Canvas 2D. **No build step, no external
-dependencies** (the 3D renderer is hand-rolled).
+Plain HTML/CSS/JavaScript, Canvas 2D. **No build step, no dependencies.**
 
 ```
-index.html         markup + controls
-styles.css         styling
-js/physics2d.js    dispersion + time-domain mild-slope scattering solver
-js/render3d.js     dependency-free 3D height-field renderer + heatmap
-js/main.js         UI wiring, solve orchestration, animation loop
+index.html      markup + controls
+styles.css      styling
+js/plate.js     complex arithmetic, dispersion roots, eigenfunction matching,
+                linear solve, R/T, deflection, moment, strain, drift
+js/charts.js    minimal canvas line charts
+js/main.js      UI wiring + plotting
 ```
 
 ## Run locally
 
 ```bash
 python3 -m http.server 8000   # then open http://localhost:8000
+```
+
+Validate the physics directly:
+
+```bash
+node -e 'const{solvePlateScattering}=require("./js/plate.js");
+  const s=solvePlateScattering({T:8,a:1,H:100,L:200,D:1e10,ms:100,eta:0,hIce:1,rhoW:1025},{N:12});
+  console.log("R^2+T^2 =", s.energy);'
 ```
 
 ## Deploy on GitHub Pages (from this branch)
